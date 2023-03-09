@@ -2,19 +2,27 @@ package com.yourorg;
 
 import static org.openrewrite.java.Assertions.java;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 import org.openrewrite.java.JavaParser;
 import org.openrewrite.test.RecipeSpec;
 import org.openrewrite.test.RewriteTest;
 
+import io.github.classgraph.ClassGraph;
+
 public class ConcreteMenuRecipeTest implements RewriteTest {
 
     @Override
     public void defaults(RecipeSpec spec) {
+        List<Path> classpath = new ClassGraph().getClasspathURIs().stream().map(Paths::get).toList();
+
         spec.recipe(new ConcreteMenuRecipe())
                 .parser(JavaParser.fromJavaVersion()
                         .logCompilationWarningsAndErrors(true)
-                // .classpath(Collections.singleton(Paths.get(".")))
+                        .classpath(classpath)
                 );
     }
 
@@ -26,6 +34,7 @@ public class ConcreteMenuRecipeTest implements RewriteTest {
                                 class Test {
                                     class MyButton extends BaseButton {
 
+                                        @Override
                                         void execute() {
 
                                         }
@@ -47,11 +56,13 @@ public class ConcreteMenuRecipeTest implements RewriteTest {
                                     class Test {
                                         class MyDeleteMenu extends BaseMenu {
 
-                                            boolean isMultiSelect() {
+                                            @Override
+                                            protected boolean isMultiSelect() {
                                                 return true;
                                             }
 
-                                            void execute() {
+                                            @Override
+                                            protected void execute() {
 
                                             }
 
@@ -61,12 +72,11 @@ public class ConcreteMenuRecipeTest implements RewriteTest {
                         """
                                     package com.yourorg.test;
 
-                                    import com.yourorg.menu.BaseMultiSelectMenu;
-
                                     class Test {
-                                        class MyDeleteMenu extends BaseMultiSelectMenu {
+                                        class MyDeleteMenu extends com.yourorg.menu.BaseMultiSelectMenu {
 
-                                            void execute() {
+                                            @Override
+                                            protected void execute() {
 
                                             }
 

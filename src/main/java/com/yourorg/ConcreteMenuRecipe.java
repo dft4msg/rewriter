@@ -6,13 +6,13 @@ import java.util.stream.Collectors;
 import org.openrewrite.ExecutionContext;
 import org.openrewrite.Recipe;
 import org.openrewrite.TreeVisitor;
-import org.openrewrite.java.AddImport;
 import org.openrewrite.java.JavaIsoVisitor;
 import org.openrewrite.java.RemoveImport;
 import org.openrewrite.java.tree.J;
 import org.openrewrite.java.tree.J.MethodDeclaration;
 import org.openrewrite.java.tree.Statement;
 import org.openrewrite.java.tree.TypeTree;
+import org.openrewrite.java.tree.TypeUtils;
 
 public class ConcreteMenuRecipe extends Recipe {
 
@@ -33,7 +33,14 @@ public class ConcreteMenuRecipe extends Recipe {
             public J.ClassDeclaration visitClassDeclaration(J.ClassDeclaration classDecl, ExecutionContext p) {
                 J.ClassDeclaration cd = super.visitClassDeclaration(classDecl, p);
 
-                if (cd.getExtends() == null || !"BaseMenu".equals(cd.getExtends().toString())) {
+                if (cd.getExtends() == null) {
+                    return cd;
+                }
+
+                boolean match = TypeUtils.isOfClassType(cd.getExtends().getType(), "com.yourorg.menu.BaseMenu");
+                System.out.println(match);
+
+                if (!"BaseMenu".equals(cd.getExtends().toString())) {
                     return cd;
                 }
 
@@ -67,15 +74,17 @@ public class ConcreteMenuRecipe extends Recipe {
                 System.out.println("multi=" + multiSelection + ", single=" + singleSelection + ", no=" + noSelection);
 
                 if (Boolean.TRUE.equals(multiSelection)) {
-                    cd = cd.withExtends(TypeTree.build("com.yourorg.menu.BaseMultiSelectMenu"));
+                    cd = cd.withExtends(TypeTree.build("com.yourorg.menu.BaseMultiSelectMenu")
+                            .withPrefix(cd.getExtends().getPrefix()));
 
                     List<Statement> statements = cd.getBody().getStatements();
 
-                    statements.removeIf(s -> s instanceof J.MethodDeclaration && ((J.MethodDeclaration) s).getSimpleName().equals("isMultiSelect"));
+                    statements.removeIf(s -> s instanceof J.MethodDeclaration
+                            && ((J.MethodDeclaration) s).getSimpleName().equals("isMultiSelect"));
 
-                    cd  = cd.withBody(cd.getBody().withStatements(statements));
+                    cd = cd.withBody(cd.getBody().withStatements(statements));
 
-                    doAfterVisit(new AddImport<>("com.yourorg.menu.BaseMultiSelectMenu", null, false));
+                    // doAfterVisit(new AddImport<>("com.yourorg.menu.BaseMultiSelectMenu", null, false));
                     doAfterVisit(new RemoveImport<>("com.yourorg.menu.BaseMenu"));
 
                     return cd;
@@ -86,5 +95,5 @@ public class ConcreteMenuRecipe extends Recipe {
 
         };
     }
-    
+
 }

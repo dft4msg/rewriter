@@ -7,8 +7,8 @@ public abstract class BaseMenu {
      * @return
      */
     @Deprecated
-    abstract boolean isMultiSelect();
+    protected abstract boolean isMultiSelect();
 
-    abstract void execute();
+    protected abstract void execute();
 
 }
