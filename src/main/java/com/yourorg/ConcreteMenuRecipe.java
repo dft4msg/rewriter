@@ -6,9 +6,7 @@ import java.util.stream.Collectors;
 import org.openrewrite.ExecutionContext;
 import org.openrewrite.Recipe;
 import org.openrewrite.TreeVisitor;
-import org.openrewrite.java.AddImport;
 import org.openrewrite.java.JavaIsoVisitor;
-import org.openrewrite.java.RemoveImport;
 import org.openrewrite.java.tree.J;
 import org.openrewrite.java.tree.J.MethodDeclaration;
 import org.openrewrite.java.tree.JavaType.ShallowClass;
@@ -39,9 +37,15 @@ public class ConcreteMenuRecipe extends Recipe {
 
         final String multiMenuFqn = "com.yourorg.menu.BaseMultiSelectMenu";
 
-        final String multiMethod = "isMultiSelect";
+        final String singleMenuFqn = "com.yourorg.menu.BaseSingleSelectMenu";
 
-        final String singleMethod = "isSingleSelect";
+        final String emptyMenuFqn = "com.yourorg.menu.BaseEmptySelectMenu";
+
+        final String multiSelectionMethod = "isMultiSelect";
+
+        final String singleSelectionMethod = "isSingleSelect";
+
+        final String emptySelectionMethod = "isEmptySelect";
 
         final static String RETURN_TRUE = "return true";
 
@@ -60,22 +64,48 @@ public class ConcreteMenuRecipe extends Recipe {
 
             List<MethodDeclaration> declarations = getMethods(cd);
 
-            Boolean multiSelection = findMethodReturnValue(declarations, multiMethod);
-            Boolean singleSelection = findMethodReturnValue(declarations, singleMethod);
-            Boolean noSelection = null;
-
-            System.out.println("multi=" + multiSelection + ", single=" + singleSelection + ", no=" + noSelection);
+            Boolean multiSelection = findMethodReturnValue(declarations, multiSelectionMethod);
+            Boolean singleSelection = findMethodReturnValue(declarations, singleSelectionMethod);
+            Boolean emptySelection = findMethodReturnValue(declarations, emptySelectionMethod);;
 
             if (Boolean.TRUE.equals(multiSelection)) {
-                cd = addExtendsMenu(cd, multiMenuFqn);
-                cd = removeMethod(cd, multiMethod);
+                cd = addExtends(cd, multiMenuFqn);
+                cd = removeLegacyMethods(cd);
 
-                addMenuImport(multiMenuFqn);
+                addImport(multiMenuFqn);
                 removeOldMenuImport();
 
                 return cd;
             }
 
+            if (Boolean.TRUE.equals(singleSelection)) {
+                cd = addExtends(cd, singleMenuFqn);
+                cd = removeLegacyMethods(cd);
+
+                addImport(singleMenuFqn);
+                removeOldMenuImport();
+
+                return cd;
+            }
+
+            if (Boolean.TRUE.equals(emptySelection)) {
+                cd = addExtends(cd, emptyMenuFqn);
+                cd = removeLegacyMethods(cd);
+
+                addImport(emptyMenuFqn);
+                removeOldMenuImport();
+
+                return cd;
+            }
+
+
+            return cd;
+        }
+
+        private J.ClassDeclaration removeLegacyMethods(J.ClassDeclaration cd) {
+            cd = removeMethod(cd, multiSelectionMethod);
+            cd = removeMethod(cd, singleSelectionMethod);
+            cd = removeMethod(cd, emptySelectionMethod);
             return cd;
         }
 
@@ -88,14 +118,14 @@ public class ConcreteMenuRecipe extends Recipe {
         }
 
         private void removeOldMenuImport() {
-            doAfterVisit(new RemoveImport<>(baseMenuFqn));
+            maybeRemoveImport(baseMenuFqn);
         }
 
-        private void addMenuImport(String menuFqn) {
-            doAfterVisit(new AddImport<>(menuFqn, null, false));
+        private void addImport(String menuFqn) {
+            maybeAddImport(menuFqn);
         }
 
-        private J.ClassDeclaration addExtendsMenu(J.ClassDeclaration cd, String menuFqn) {
+        private J.ClassDeclaration addExtends(J.ClassDeclaration cd, String menuFqn) {
             TypeTree multiMenu = TypeTree.build(simpleClassName(menuFqn))
                     .withType(ShallowClass.build(menuFqn));
 
