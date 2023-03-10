@@ -6,10 +6,12 @@ import java.util.stream.Collectors;
 import org.openrewrite.ExecutionContext;
 import org.openrewrite.Recipe;
 import org.openrewrite.TreeVisitor;
+import org.openrewrite.java.AddImport;
 import org.openrewrite.java.JavaIsoVisitor;
 import org.openrewrite.java.RemoveImport;
 import org.openrewrite.java.tree.J;
 import org.openrewrite.java.tree.J.MethodDeclaration;
+import org.openrewrite.java.tree.JavaType.ShallowClass;
 import org.openrewrite.java.tree.Statement;
 import org.openrewrite.java.tree.TypeTree;
 import org.openrewrite.java.tree.TypeUtils;
@@ -28,72 +30,74 @@ public class ConcreteMenuRecipe extends Recipe {
 
     @Override
     protected TreeVisitor<?, ExecutionContext> getVisitor() {
-        return new JavaIsoVisitor<ExecutionContext>() {
-            @Override
-            public J.ClassDeclaration visitClassDeclaration(J.ClassDeclaration classDecl, ExecutionContext p) {
-                J.ClassDeclaration cd = super.visitClassDeclaration(classDecl, p);
+        return new MyVisitor();
+    }
 
-                if (cd.getExtends() == null) {
-                    return cd;
-                }
+    private static class MyVisitor extends JavaIsoVisitor<ExecutionContext> {
 
-                boolean match = TypeUtils.isOfClassType(cd.getExtends().getType(), "com.yourorg.menu.BaseMenu");
-                System.out.println(match);
+        @Override
+        public J.ClassDeclaration visitClassDeclaration(J.ClassDeclaration classDecl, ExecutionContext p) {
+            J.ClassDeclaration cd = super.visitClassDeclaration(classDecl, p);
 
-                if (!"BaseMenu".equals(cd.getExtends().toString())) {
-                    return cd;
-                }
+            if (cd.getExtends() == null) {
+                return cd;
+            }
+            boolean match = TypeUtils.isOfClassType(cd.getExtends().getType(), "com.yourorg.menu.BaseMenu");
+            System.out.println("match=" + match);
 
-                System.out.println("found BaseMenu");
+            if (!"BaseMenu".equals(cd.getExtends().toString())) {
+                return cd;
+            }
 
-                List<MethodDeclaration> declarations = cd.getBody().getStatements().stream()
-                        .filter(s -> s instanceof J.MethodDeclaration)
-                        .map(J.MethodDeclaration.class::cast)
-                        .collect(Collectors.toList());
+            System.out.println("found BaseMenu");
 
-                Boolean multiSelection = null;
-                Boolean singleSelection = null;
-                Boolean noSelection = null;
+            List<MethodDeclaration> declarations = cd.getBody().getStatements().stream()
+                    .filter(s -> s instanceof J.MethodDeclaration)
+                    .map(J.MethodDeclaration.class::cast)
+                    .collect(Collectors.toList());
 
-                for (J.MethodDeclaration methodDeclaration : declarations) {
-                    if ("isMultiSelect".equals(methodDeclaration.getSimpleName())) {
-                        // TODO extract this
-                        List<Statement> statements = methodDeclaration.getBody().getStatements();
-                        for (Statement statement : statements) {
-                            if ("return false".equals(statement.toString())) {
-                                multiSelection = false;
-                                break;
-                            } else if ("return true".equals(statement.toString())) {
-                                multiSelection = true;
-                                break;
-                            }
+            Boolean multiSelection = null;
+            Boolean singleSelection = null;
+            Boolean noSelection = null;
+
+            for (J.MethodDeclaration methodDeclaration : declarations) {
+                if ("isMultiSelect".equals(methodDeclaration.getSimpleName())) {
+                    // TODO extract this
+                    List<Statement> statements = methodDeclaration.getBody().getStatements();
+                    for (Statement statement : statements) {
+                        if ("return false".equals(statement.toString())) {
+                            multiSelection = false;
+                            break;
+                        } else if ("return true".equals(statement.toString())) {
+                            multiSelection = true;
+                            break;
                         }
                     }
                 }
+            }
 
-                System.out.println("multi=" + multiSelection + ", single=" + singleSelection + ", no=" + noSelection);
+            System.out.println("multi=" + multiSelection + ", single=" + singleSelection + ", no=" + noSelection);
 
-                if (Boolean.TRUE.equals(multiSelection)) {
-                    cd = cd.withExtends(TypeTree.build("com.yourorg.menu.BaseMultiSelectMenu")
-                            .withPrefix(cd.getExtends().getPrefix()));
+            if (Boolean.TRUE.equals(multiSelection)) {
+                var multiMenu = TypeTree.build("BaseMultiSelectMenu").withType(ShallowClass.build("com.yourorg.menu.BaseMultiSelectMenu"));
 
-                    List<Statement> statements = cd.getBody().getStatements();
+                cd = cd.withExtends(multiMenu.withPrefix(cd.getExtends().getPrefix()));
 
-                    statements.removeIf(s -> s instanceof J.MethodDeclaration
-                            && ((J.MethodDeclaration) s).getSimpleName().equals("isMultiSelect"));
+                List<Statement> statements = cd.getBody().getStatements();
 
-                    cd = cd.withBody(cd.getBody().withStatements(statements));
+                statements.removeIf(s -> s instanceof J.MethodDeclaration
+                        && ((J.MethodDeclaration) s).getSimpleName().equals("isMultiSelect"));
 
-                    // doAfterVisit(new AddImport<>("com.yourorg.menu.BaseMultiSelectMenu", null, false));
-                    doAfterVisit(new RemoveImport<>("com.yourorg.menu.BaseMenu"));
+                cd = cd.withBody(cd.getBody().withStatements(statements));
 
-                    return cd;
-                }
+                doAfterVisit(new AddImport<>("com.yourorg.menu.BaseMultiSelectMenu", null, false));
+                doAfterVisit(new RemoveImport<>("com.yourorg.menu.BaseMenu"));
 
                 return cd;
             }
 
-        };
-    }
+            return cd;
+        }
+    };
 
 }
