@@ -35,6 +35,18 @@ public class ConcreteMenuRecipe extends Recipe {
 
     private static class MyVisitor extends JavaIsoVisitor<ExecutionContext> {
 
+        final String baseMenuFqn = "com.yourorg.menu.BaseMenu";
+
+        final String multiMenuFqn = "com.yourorg.menu.BaseMultiSelectMenu";
+
+        final String multiMethod = "isMultiSelect";
+
+        final String singleMethod = "isSingleSelect";
+
+        final static String RETURN_TRUE = "return true";
+
+        final static String RETURN_FALSE = "return false";
+
         @Override
         public J.ClassDeclaration visitClassDeclaration(J.ClassDeclaration classDecl, ExecutionContext p) {
             J.ClassDeclaration cd = super.visitClassDeclaration(classDecl, p);
@@ -42,61 +54,86 @@ public class ConcreteMenuRecipe extends Recipe {
             if (cd.getExtends() == null) {
                 return cd;
             }
-            boolean match = TypeUtils.isOfClassType(cd.getExtends().getType(), "com.yourorg.menu.BaseMenu");
-            System.out.println("match=" + match);
-
-            if (!"BaseMenu".equals(cd.getExtends().toString())) {
+            if (!TypeUtils.isOfClassType(cd.getExtends().getType(), baseMenuFqn)) {
                 return cd;
             }
 
-            System.out.println("found BaseMenu");
+            List<MethodDeclaration> declarations = getMethods(cd);
 
-            List<MethodDeclaration> declarations = cd.getBody().getStatements().stream()
-                    .filter(s -> s instanceof J.MethodDeclaration)
-                    .map(J.MethodDeclaration.class::cast)
-                    .collect(Collectors.toList());
-
-            Boolean multiSelection = null;
-            Boolean singleSelection = null;
+            Boolean multiSelection = findMethodReturnValue(declarations, multiMethod);
+            Boolean singleSelection = findMethodReturnValue(declarations, singleMethod);
             Boolean noSelection = null;
-
-            for (J.MethodDeclaration methodDeclaration : declarations) {
-                if ("isMultiSelect".equals(methodDeclaration.getSimpleName())) {
-                    // TODO extract this
-                    List<Statement> statements = methodDeclaration.getBody().getStatements();
-                    for (Statement statement : statements) {
-                        if ("return false".equals(statement.toString())) {
-                            multiSelection = false;
-                            break;
-                        } else if ("return true".equals(statement.toString())) {
-                            multiSelection = true;
-                            break;
-                        }
-                    }
-                }
-            }
 
             System.out.println("multi=" + multiSelection + ", single=" + singleSelection + ", no=" + noSelection);
 
             if (Boolean.TRUE.equals(multiSelection)) {
-                var multiMenu = TypeTree.build("BaseMultiSelectMenu").withType(ShallowClass.build("com.yourorg.menu.BaseMultiSelectMenu"));
+                cd = addExtendsMenu(cd, multiMenuFqn);
+                cd = removeMethod(cd, multiMethod);
 
-                cd = cd.withExtends(multiMenu.withPrefix(cd.getExtends().getPrefix()));
-
-                List<Statement> statements = cd.getBody().getStatements();
-
-                statements.removeIf(s -> s instanceof J.MethodDeclaration
-                        && ((J.MethodDeclaration) s).getSimpleName().equals("isMultiSelect"));
-
-                cd = cd.withBody(cd.getBody().withStatements(statements));
-
-                doAfterVisit(new AddImport<>("com.yourorg.menu.BaseMultiSelectMenu", null, false));
-                doAfterVisit(new RemoveImport<>("com.yourorg.menu.BaseMenu"));
+                addMenuImport(multiMenuFqn);
+                removeOldMenuImport();
 
                 return cd;
             }
 
             return cd;
+        }
+
+        private List<MethodDeclaration> getMethods(J.ClassDeclaration cd) {
+            List<MethodDeclaration> declarations = cd.getBody().getStatements().stream()
+                    .filter(s -> s instanceof J.MethodDeclaration)
+                    .map(J.MethodDeclaration.class::cast)
+                    .collect(Collectors.toList());
+            return declarations;
+        }
+
+        private void removeOldMenuImport() {
+            doAfterVisit(new RemoveImport<>(baseMenuFqn));
+        }
+
+        private void addMenuImport(String menuFqn) {
+            doAfterVisit(new AddImport<>(menuFqn, null, false));
+        }
+
+        private J.ClassDeclaration addExtendsMenu(J.ClassDeclaration cd, String menuFqn) {
+            TypeTree multiMenu = TypeTree.build(simpleClassName(menuFqn))
+                    .withType(ShallowClass.build(menuFqn));
+
+            // add space between extends and the Menu
+            cd = cd.withExtends(multiMenu.withPrefix(cd.getExtends().getPrefix()));
+            return cd;
+        }
+
+        private J.ClassDeclaration removeMethod(J.ClassDeclaration cd, String methodName) {
+            List<Statement> statements = cd.getBody().getStatements();
+
+            statements.removeIf(s -> s instanceof J.MethodDeclaration
+                    && ((J.MethodDeclaration) s).getSimpleName().equals(methodName));
+
+            cd = cd.withBody(cd.getBody().withStatements(statements));
+            return cd;
+        }
+
+        private Boolean findMethodReturnValue(List<MethodDeclaration> declarations, String methodName) {
+            for (J.MethodDeclaration methodDeclaration : declarations) {
+                if (methodName.equals(methodDeclaration.getSimpleName())) {
+                    List<Statement> statements = methodDeclaration.getBody().getStatements();
+                    for (Statement statement : statements) {
+                        if (RETURN_FALSE.equals(statement.toString())) {
+                            return false;
+                        } else if (RETURN_TRUE.equals(statement.toString())) {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private String simpleClassName(String fqn) {
+            String[] pts = fqn.split("\\.");
+            return pts[pts.length - 1];
         }
     };
 
